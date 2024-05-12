@@ -141,9 +141,7 @@ class LoginTask:
             if req.content_type not in ("application/json",):
                 resp.status = falcon.HTTP_BAD_REQUEST
                 resp.data = json.dumps(
-                    dict(msg=f"invalid content type={req.content_type} for VC presentation, should be application/json",
-                        exception_type=type(e).__name__,
-                        exception_message=str(e)
+                    dict(msg=f"invalid content type={req.content_type} for VC presentation, should be application/json"
                     )).encode("utf-8")
                 return
 
@@ -151,17 +149,13 @@ class LoginTask:
             if data.get("said") is None:
                 resp.status = falcon.HTTP_BAD_REQUEST
                 resp.data = json.dumps(
-                dict(msg=f"requests with a said is required",
-                    exception_type=type(e).__name__,
-                    exception_message=str(e)
+                dict(msg=f"login request requires request body with said"
                 )).encode("utf-8")
                 return
             if data.get("vlei") is None:
                 resp.status = falcon.HTTP_BAD_REQUEST
                 resp.data = json.dumps(
-                dict(msg=f"requests with vlei ecr cesr is required",
-                    exception_type=type(e).__name__,
-                    exception_message=str(e)
+                dict(msg=f"login request requires request body with vlei containing ECR CESR"
                 )).encode("utf-8")
                 return
 

@@ -268,6 +268,9 @@ def main():
     logger.info("Starting RegPS...")
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+def getApp():
+    return app
 
 
 if __name__ == "__main__":

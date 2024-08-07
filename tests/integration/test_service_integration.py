@@ -1,11 +1,13 @@
-from fastapi.testclient import TestClient
+import falcon
+from falcon.testing import create_environ
 import logging
-from src.regps.app import fastapi_app
 import pytest
+from regps.app import fastapi_app
 import sys
 import time
 import threading
-from wsgiref import simple_server
+import requests
+
 
 # Create a logger object.
 logger = logging.getLogger(__name__)
@@ -19,10 +21,13 @@ logger.setLevel(logging.DEBUG)
 
 
 @pytest.fixture(scope="session")
-def start_gunicorn():
-    # Start Gunicorn server in a separate thread
-    server = simple_server.make_server("0.0.0.0", 8000, fastapi_app.app)
-    server_thread = threading.Thread(target=server.serve_forever)
+def start_server():
+    # Wrap the FastAPI app with WSGIMiddleware
+    def run_server():
+        fastapi_app.main()
+
+    # Start the server in a separate thread
+    server_thread = threading.Thread(target=run_server)
     server_thread.start()
     # Give it some time to start up
     time.sleep(3)
@@ -32,22 +37,26 @@ def start_gunicorn():
     server_thread.join()
 
 
-@pytest.mark.manual
-def test_service_integration(start_gunicorn):
+def test_service_integration(start_server):
     logger.info("Running test_local so that you can debug the server")
-    while True:
+    # Make a request to the FastAPI server
+    response = requests.get("http://0.0.0.0:8000/docs")
+    
+    # Assert that the response status code is 200
+    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
+        
+    while(True):
         time.sleep(1)
 
 
 # TODO use this test as a basis for an integration test (rather than simulated unit test)
 # currently needs a pre-loaded vlei-verifier populated per signify-ts vlei-verifier test
 @pytest.mark.manual
-def test_ends_integration(start_gunicorn):
+def test_ends_integration(start_server):
     # AID and SAID should be the same as what is in credential.cesr for the ECR credential
     # see https://trustoverip.github.io/tswg-acdc-specification/#top-level-fields to understand the fields/values
     AID = "EP4kdoVrDh4Mpzh2QbocUYIv4IjLZLDU367UO0b40f6x"
     SAID = "EElnd1DKvcDzzh7u7jBjsg2X9WgdQQuhgiu80i2VR-gk"
-    DIG = "EC7b6S50sY26HTj6AtQiWMDMucsBxMvThkmrKUBXVMf0"
 
     # got these from signify-ts integration test
     headers = {
@@ -65,25 +74,28 @@ def test_ends_integration(start_gunicorn):
         "ACCEPT-ENCODING": "gzip, deflate",
     }
 
-    app = fastapi_app.app
-    client = TestClient(app)
+    app = service.falcon_app()
+    client = falcon.testing.TestClient(app)
 
-    result = client.get(f"/ping", headers=headers)
-    assert result.status_code == 200
+    result = client.simulate_get(f"/ping", headers=headers)
+    assert result.status == falcon.HTTP_200
     assert result.text == "Pong"
 
-    with open(f"../../data/credential.cesr", "r") as cfile:
+    # result = client.simulate_get(f"/checklogin/{AID}", headers=headers)
+    # assert result.status == falcon.HTTP_200
+
+    with open(f"./data/credential.cesr", "r") as cfile:
         vlei_ecr = cfile.read()
         headers["Content-Type"] = "application/json+cesr"
-        result = client.post(
+        result = client.simulate_post(
             f"/login", json={"said": SAID, "vlei": vlei_ecr}, headers=headers
         )
-        assert result.status_code == 202
+        assert result.status == falcon.HTTP_202
 
-    result = client.get(f"/checklogin/{AID}", headers=headers)
-    assert result.status_code == 200
+    result = client.simulate_get(f"/checklogin/{AID}", headers=headers)
+    assert result.status == falcon.HTTP_200
 
-    result = client.get(f"/checkupload/{AID}/{DIG}", headers=headers)
+    result = client.simulate_get(f"/status/{AID}", headers=headers)
     assert (
-        result.status_code == result.status_code == 401
+        result.status == falcon.HTTP_401
     )  # fail because this signature should not verify
